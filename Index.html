@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TikTok Live Neon/Metal Full + Icon & Hearts</title>
+
+<style>
+body{margin:0;background:#000;color:#fff;font-family:system-ui;overflow:hidden;}
+.app{max-width:430px;margin:auto;padding:10px;position:relative;}
+input,button{width:100%;padding:10px;margin-bottom:6px;border-radius:8px;border:none;font-weight:700;}
+button#startBtn{background:#ff0033;color:#fff;transition:0.3s;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;}
+.card{background:rgba(255,255,255,.06);padding:10px;border-radius:10px;margin-top:10px;backdrop-filter:blur(6px);}
+.chat{height:35vh;overflow:auto;}
+.user,.gift{font-weight:600}
+.user{color:#00ff99;text-shadow:0 0 6px #0f0;}
+.gift{color:#ff0033;text-shadow:0 0 8px #f03;}
+.rank div{font-size:13px;display:flex;align-items:center;margin-top:3px;position:relative;}
+.rank div img{width:28px;height:28px;border-radius:50%;margin-right:6px;object-fit:cover;box-shadow:0 0 8px #ff0;}
+.chat div img{width:28px;height:28px;border-radius:50%;margin-right:6px;vertical-align:middle;box-shadow:0 0 6px #0ff;}
+.neon{animation:neonGlow 1s infinite alternate;}
+@keyframes neonGlow{
+  from{text-shadow:0 0 6px #0f0,0 0 10px #0f0;}
+  to{text-shadow:0 0 12px #0f0,0 0 18px #0f0;}
+}
+/* Hearts animation */
+.heart{
+  position:absolute;
+  width:30px;
+  height:30px;
+  background:url('https://i.ibb.co/QNdL4CN/heart.png') no-repeat center/contain;
+  pointer-events:none;
+  animation:heartMove 1s ease-out forwards;
+}
+@keyframes heartMove{
+  0%{opacity:1;transform:translate(0,0) scale(1);}
+  100%{opacity:0;transform:translate(0,-150px) scale(1.5);}
+}
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+<input id="username" placeholder="Username TikTok (tanpa @)">
+<button id="startBtn" onclick="start()">📷 START LIVE</button>
+
+<div id="live">OFFLINE</div>
+
+<div class="card chat" id="chat"></div>
+
+<div class="card">
+<b>🏆 TOP GIFT</b>
+<div id="giftRank" class="rank"></div>
+</div>
+
+<div class="card">
+<b>❤️ TOP LIKE</b>
+<div id="likeRank" class="rank"></div>
+</div>
+</div>
+
+<script>
+const chat=document.getElementById("chat");
+const live=document.getElementById("live");
+const giftRank=document.getElementById("giftRank");
+const likeRank=document.getElementById("likeRank");
+const startBtn=document.getElementById("startBtn");
+const app=document.getElementById("app");
+
+let ws = null; // websocket global
+
+// ---------------- Heart effect function ----------------
+function createHeart(x, y){
+  const heart = document.createElement("div");
+  heart.className="heart";
+  heart.style.left=(x-15)+"px";
+  heart.style.top=(y-15)+"px";
+  document.body.appendChild(heart);
+  setTimeout(()=>heart.remove(),1000);
+}
+
+// ---------------- WebSocket init ----------------
+function initWS(){
+  if(ws) return; // jika sudah dibuat
+  ws = new WebSocket("ws://127.0.0.1:8080");
+
+  ws.onmessage = handleMessage;
+
+  ws.onerror = (err) => {
+    console.error("WS ERROR:", err);
+    startBtn.style.background="#ff0033";
+    startBtn.innerHTML="📷 START LIVE";
+  };
+
+  ws.onclose = () => {
+    console.log("WS Closed, reconnect...");
+    ws = null;
+    setTimeout(initWS, 1000); // reconnect otomatis
+  };
+}
+
+// ---------------- Start function ----------------
+function start(){
+  const user = document.getElementById("username").value.trim();
+  if(!user) return alert("Masukkan username!");
+
+  startBtn.style.background="#ffa500"; // menunggu connect
+  startBtn.innerHTML="📸 CONNECTING...";
+
+  if(!ws) initWS(); // buat WS jika belum ada
+
+  // Tunggu WS ready sebelum kirim start
+  const sendStart = () => {
+    if(ws.readyState === WebSocket.OPEN){
+      ws.send(JSON.stringify({type:"start", username:user}));
+    } else {
+      setTimeout(sendStart, 50); // cek lagi tiap 50ms
+    }
+  };
+  sendStart();
+}
+
+// ---------------- Handler pesan WS ----------------
+function handleMessage(e){
+  const d = JSON.parse(e.data);
+
+  // Live status
+  if(d.type==="live"){
+    if(d.status==="on"){
+      live.textContent="LIVE";
+      live.style.color="#00ff00";
+      startBtn.style.background="#00aa00";
+      startBtn.innerHTML="📸 LIVE ✅";
+    } else {
+      live.textContent="OFFLINE";
+      live.style.color="#fff";
+      startBtn.style.background="#ff0033";
+      startBtn.innerHTML="📷 START LIVE";
+    }
+  }
+
+  // Chat
+  if(d.type==="chat"){
+    const avatarUrl=d.avatar || "https://i.ibb.co/5L7VvH2/default-avatar.png";
+    chat.innerHTML+=`<div class="neon"><img src="${avatarUrl}"><span class="user">${d.user}</span>: ${d.message}</div>`;
+    chat.scrollTop=chat.scrollHeight;
+  }
+
+  // Gift
+  if(d.type==="gift"){
+    giftRank.innerHTML="";
+    d.giftTop.forEach((u,i)=>{
+      const avatarUrl=u.avatar || "https://i.ibb.co/5L7VvH2/default-avatar.png";
+      giftRank.innerHTML+=`<div class="neon"><img src="${avatarUrl}"> ${i+1}. ${u.user} – 💎 ${u.value}</div>`;
+    });
+  }
+
+  // Like
+  if(d.type==="like"){
+    likeRank.innerHTML="";
+    d.likeTop.forEach((u,i)=>{
+      const avatarUrl=u.avatar || "https://i.ibb.co/5L7VvH2/default-avatar.png";
+      likeRank.innerHTML+=`<div class="neon"><img src="${avatarUrl}"> ${i+1}. ${u.user} – ❤️ ${u.value}</div>`;
+    });
+
+    // Heart effect di atas avatar user
+    const rankDivs = likeRank.querySelectorAll('div');
+    rankDivs.forEach(div => {
+      const rect = div.querySelector('img').getBoundingClientRect();
+      const heartsCount = Math.floor(Math.random()*3)+1;
+      for(let i=0; i<heartsCount; i++){
+        const offsetX = Math.random()*20-10;
+        createHeart(rect.left + rect.width/2 + offsetX, rect.top);
+      }
+    });
+  }
+}
+
+// ---------------- Heart effect on tap ----------------
+app.addEventListener("click", function(e){
+  createHeart(e.clientX, e.clientY);
+});
+
+// ---------------- Inisialisasi WS langsung saat halaman load ----------------
+initWS();
+</script>
+
+</body>
+</html>
